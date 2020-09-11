@@ -1,0 +1,9 @@
+
+
+Humidity    : 24.0 
+Temperature : 24.0 
+Light       : 0.26 
+Smoke       : 1-1 
+-RPi state-
+Memory      : 1024/450MB
+Temperature : 50 C

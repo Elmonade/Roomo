@@ -1,3 +1,10 @@
+# test2 is an improved version of test, base algorithm differentiate itself by: 
+# a) added error handling thus less prone to runtime error in case error code continues to function after giving proper warning
+# a) each sensors has its own boolean checker variable
+# b) interaction between logging options changed, 
+#       * write to file if failes to send email
+#       * execute query if sensors still triggered after two consecutive emails
+
 import datetime
 import psycopg2
 import subprocess
@@ -44,6 +51,7 @@ GPIO.setup(26, GPIO.IN)
 conn                     = psycopg2.connect('dbname=rpi')
 cur                      = conn.cursor()
 
+# Function to execute query on PostgreSQL
 def insert_log(date, humid, temp, light, smoke_l, smoke_r):
     query = """
     INSERT INTO
@@ -53,6 +61,14 @@ def insert_log(date, humid, temp, light, smoke_l, smoke_r):
     """
     values = (date, humid, temp, light, smoke_l, smoke_r)
     cur.execute(query, values)
+    conn.commit()
+
+# Function to write log to file
+def write_file():
+    log = open("log_record.txt", "a")
+    log.write(f"\nHumidity    : {humidity} \nTemperature : {temperature} \nLight       : {round(ldr.value, 2)} \nSmoke       : {GPIO.input(2)}-{GPIO.input(26)} \n")
+    log.close() 
+    subprocess.run(["sh", "/home/pi/stato.sh"])
 
 # Fucntion to send email
 def sendmail(recipient, subject, content):
@@ -94,20 +110,18 @@ while True:
 		print("\nSmoke detected")
 		#error_detected = True
 		S_sensor = True
-
+        # if any of the sensors triggered
 	if(L_sensor or H_sensor or T_sensor or S_sensor):
                 if(cnt >= 2):
                     # write to PostgreSQL
                     date = datetime.datetime.now()
                     formatted_date = date.strftime("%Y-%m-%d %H:%M:%S")
                     insert_log(formatted_date, humidity, temperature, round(ldr.value, 2), GPIO.input(2), GPIO.input(26)) 
-                    conn.commit()
                     print("Wrote to PostgreSQL!")
 
                     T_sensor = H_sensor = S_sensor = L_sensor = False
                     continue     
                 else:
-                    # Use try-except block here
                     try:
 
                         if(L_sensor):
@@ -121,12 +135,7 @@ while True:
                         print("Sent email!")
                     except:
                         print("Unable to send email!\nWriting to File...")
-                        # Write to file
-                        log = open("log_record.txt", "a")
-                        log.write(f"\nHumidity    : {humidity} \nTemperature : {temperature} \nLight       : {round(ldr.value, 2)} \nSmoke       : {GPIO.input(2)}-{GPIO.input(26)} \n")
-                        log.close() 
-                        subprocess.run(["sh", "/home/pi/stato.sh"])
-
+                        write_file()
                     cnt += 1
                     T_sensor = H_sensor = S_sensor = L_sensor = False
 	else:

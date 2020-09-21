@@ -1,10 +1,16 @@
+# test3 is a modified version of test2:
+# a) tried to catch specific errors in each logging method
+# b) without condition writes log to file in the begining of time interval
+# <Final version!>
+
+import sys
 import socket                       
+import smtplib                        
 import datetime
 import psycopg2                 
 import subprocess                    
-import smtplib                        
 import Adafruit_DHT                 # Humidity, Temperature sensor library
-import RPi.GPIO as GPIO             # Smoke sensor library
+import RPi.GPIO as GPIO             # Smoke sensor library / General usage
 from   gpiozero import LightSensor  # light sensor library
 from   time     import sleep
 
@@ -22,8 +28,6 @@ emailContent_Smoke       = "Abnormal amount of gas"
 emailContent             = "Not sure what's wrong..."
 
 cnt                      = 0           # count the amount mail RPi sent
-#error_detected          = False       # check the errors(True if error detected)
-#error_type              = 0           # identify the error using code
 L_sensor                 = False
 H_sensor                 = False
 T_sensor                 = False
@@ -41,21 +45,26 @@ humidity, temperature    = Adafruit_DHT.read_retry(sensor, pin)
 GPIO.setup(2, GPIO.IN)
 GPIO.setup(26, GPIO.IN)
 
-# Connect to PostgreSQL
-conn                     = psycopg2.connect('dbname=rpi')
-cur                      = conn.cursor()
-
 # Function to execute query on PostgreSQL
 def insert_log(date, humid, temp, light, smoke_l, smoke_r):
-    query = """
-    INSERT INTO
-        sensors
-    VALUES
-        (%s, %s, %s, %s, %s, %s)
-    """
-    values = (date, humid, temp, light, smoke_l, smoke_r)
-    cur.execute(query, values)
-    conn.commit()
+    try:
+        # Connect to PostgreSQL
+        conn = psycopg2.connect('dbname=rpi')
+        cur = conn.cursor()
+        # Query to execute 
+        query = """
+        INSERT INTO
+            sensors
+        VALUES
+            (%s, %s, %s, %s, %s, %s)
+        """
+        values = (date, humid, temp, light, smoke_l, smoke_r)
+        cur.execute(query, values)
+        conn.commit()
+    except(psycopg2.OperationalError):
+         print("Couldn't connect to Postgre database, check connection details")
+    except:
+        print(sys.exc_info())
 
 # Function to write log to file
 def write_file():
@@ -66,25 +75,22 @@ def write_file():
 
 # Fucntion to send email
 def sendmail(recipient, subject, content):
-        # Create Headers
         headers = ["From: " + GMAIL_USERNAME, "Subject: " + subject, "To: " + recipient, "MIME-Version: 1.0", "Content-Type: text/html"]
-        headers = "\r\n".join(headers)
-        # Connect to Gmail Server
+        headers = "\r\n".join(headers) 
         session = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         session.ehlo()
         session.starttls()
         session.ehlo()
-        # Login to Gmail
         session.login(GMAIL_USERNAME, GMAIL_PASSWORD)
-        # Send Email & Exit
         session.sendmail(GMAIL_USERNAME, recipient, headers + "\r\n\r\n" + content)
         session.quit
 
+interval = 5
 # Main loop
 while True:
-	print("\n<---Wait for 5sec--->\n")
-	sleep(5)
-        # No matter what always writes log to file
+	print(f"\n<wait '{interval}' sec>")
+	sleep(interval)
+        # writes log to file
 	try:
 	    write_file()
 	except(PermissionError):
@@ -121,8 +127,7 @@ while True:
                     date = datetime.datetime.now()
                     formatted_date = date.strftime("%Y-%m-%d %H:%M:%S")
                     insert_log(formatted_date, humidity, temperature, round(ldr.value, 2), GPIO.input(2), GPIO.input(26)) 
-                    print("Wrote to PostgreSQL!")
-
+                        
                     T_sensor = H_sensor = S_sensor = L_sensor = False
                     continue     
                 # if the mail count is less than 2
@@ -146,6 +151,6 @@ while True:
                     cnt += 1
                     T_sensor = H_sensor = S_sensor = L_sensor = False
         # if none of the sensors are triggered
-        # assume problem is solved and continue operation
+        # clear the counter for error email
 	else:
                 cnt = 0

@@ -1,3 +1,7 @@
+# exe_test(test) is an improved version of exe
+# a) added logging options addendum to email warnings
+# b) 
+
 import psycopg2 
 import datetime
 import subprocess
